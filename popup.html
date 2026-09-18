@@ -3,20 +3,72 @@
   <head>
     <style>
       body {
-        width: 300px;
+        width: 320px;
         font-family: Arial, sans-serif;
         padding: 16px;
         text-align: left;
+        background: #fafafa;
       }
       h2 {
-        margin: 0 0 8px 0;
+        margin: 0 0 4px 0;
         color: #2b2b2b;
         text-align: center;
+        font-size: 16px;
       }
+      .subtitle {
+        text-align: center;
+        font-size: 11px;
+        color: #777;
+        margin-bottom: 12px;
+      }
+
+      /* --- Score badge --- */
+      #score-circle {
+        width: 90px;
+        height: 90px;
+        border-radius: 50%;
+        margin: 0 auto 6px auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 28px;
+        font-weight: bold;
+        color: white;
+        transition: background 0.3s;
+      }
+      #score-label {
+        text-align: center;
+        font-size: 13px;
+        font-weight: bold;
+        margin-bottom: 14px;
+      }
+      .score-low { background: #2e9e4f; }
+      .score-medium { background: #e0a800; }
+      .score-high { background: #d9362e; }
+
+      /* --- Details section --- */
+      details {
+        margin-top: 10px;
+        font-size: 12px;
+      }
+      summary {
+        cursor: pointer;
+        font-weight: bold;
+        color: #444;
+        margin-bottom: 6px;
+      }
+      ul#tracker-list {
+        font-size: 12px;
+        max-height: 100px;
+        overflow-y: auto;
+        margin: 4px 0;
+        padding-left: 18px;
+      }
+
       textarea {
         width: 100%;
-        height: 80px;
-        margin-top: 10px;
+        height: 70px;
+        margin-top: 8px;
         font-size: 12px;
         box-sizing: border-box;
       }
@@ -30,30 +82,36 @@
         margin-top: 12px;
         padding: 10px;
         border-radius: 6px;
-        font-size: 13px;
+        font-size: 12px;
         font-weight: bold;
       }
-      .safe {
-        background: #e3f7e6;
-        color: #1a7a34;
-      }
-      .warning {
-        background: #fdeaea;
-        color: #b3261e;
-      }
-      .neutral {
-        background: #f1f1f1;
-        color: #444;
+      .safe { background: #e3f7e6; color: #1a7a34; }
+      .warning { background: #fdeaea; color: #b3261e; }
+      .neutral { background: #f1f1f1; color: #444; }
+
+      #policy-status {
+        font-size: 11px;
+        color: #777;
+        word-wrap: break-word;
+        margin-top: 8px;
       }
     </style>
   </head>
   <body>
-    <h2 id="message">Checking this page...</h2>
-    <ul id="tracker-list" style="font-size: 13px;"></ul>
+    <h2>ConsentGap</h2>
+    <div class="subtitle">Catching the gap between promise and practice</div>
 
-    <p id="policy-status" style="font-size: 12px; word-wrap: break-word;">
-      Checking for a privacy policy...
-    </p>
+    <div id="score-circle" class="score-low">--</div>
+    <div id="score-label">Checking this page...</div>
+
+    <div id="result"></div>
+
+    <details>
+      <summary id="message">Trackers caught</summary>
+      <ul id="tracker-list"></ul>
+    </details>
+
+    <p id="policy-status">Checking for a privacy policy...</p>
 
     <div id="manual-section" style="display: none;">
       <p style="font-size: 12px; margin-bottom: 4px;">
@@ -62,8 +120,6 @@
       <textarea id="policy-input" placeholder="Paste privacy policy text here..."></textarea>
       <button id="check-button">Check for Consent Gap</button>
     </div>
-
-    <div id="result"></div>
 
     <script src="policy-phrases.js"></script>
     <script src="popup.js"></script>
