@@ -59,12 +59,56 @@ chrome.webNavigation.onBeforeNavigate.addListener((details) => {
     // frameId 0 means the main page, not an iframe inside it
     trackersByTab[details.tabId] = [];
     chrome.storage.local.set({ trackersByTab });
+
+    // Also clear any previously fetched privacy policy for this tab
+    chrome.storage.local.get("policyTextByTab", (data) => {
+      const policyTextByTab = data.policyTextByTab || {};
+      delete policyTextByTab[details.tabId];
+      chrome.storage.local.set({ policyTextByTab });
+    });
+  }
+});
+
+// --- STEP 6: Auto-detected privacy policy handling ---
+// content.js runs on every page and, if it finds a link that looks like
+// a privacy policy, sends its URL here. We fetch that page ourselves
+// (the extension's host_permissions let us fetch cross-origin, which a
+// normal webpage script can't always do) and strip it down to plain text.
+chrome.runtime.onMessage.addListener((message, sender) => {
+  if (message.type === "PRIVACY_POLICY_FOUND" && sender.tab) {
+    const tabId = sender.tab.id;
+
+    fetch(message.url)
+      .then((response) => response.text())
+      .then((html) => {
+        // Very simple HTML-to-text: strip scripts/styles, then all tags,
+        // then collapse extra whitespace. Not perfect, but good enough
+        // for keyword matching.
+        const plainText = html
+          .replace(/<script[\s\S]*?<\/script>/gi, " ")
+          .replace(/<style[\s\S]*?<\/style>/gi, " ")
+          .replace(/<[^>]+>/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+
+        chrome.storage.local.get("policyTextByTab", (data) => {
+          const policyTextByTab = data.policyTextByTab || {};
+          policyTextByTab[tabId] = {
+            url: message.url,
+            text: plainText
+          };
+          chrome.storage.local.set({ policyTextByTab });
+        });
+      })
+      .catch((err) => {
+        console.log("[ConsentGap] Could not fetch privacy policy:", err);
+      });
   }
 });
 
 // NEXT STEPS FOR THE TEAM (not built yet):
-// 1. Person 3: replace KNOWN_TRACKERS with the full EasyPrivacy/blocklist data
-// 2. Person 4: scrape the current site's privacy policy text, keyword-match
-//    it for phrases like "we do not share your data", save that result too
-// 3. Combine tracker count + policy mismatch into a real 0-100 score
-// 4. popup.js reads chrome.storage.local to show the score for the active tab
+// 1. Person 3: keep expanding KNOWN_TRACKERS in tracker-list.js
+// 2. Combine tracker count + policy mismatch into a single 0-100 score
+// 3. Handle sites where no privacy policy link is found (popup.js already
+//    falls back to the manual paste box for these)
+

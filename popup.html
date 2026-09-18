@@ -51,11 +51,18 @@
     <h2 id="message">Checking this page...</h2>
     <ul id="tracker-list" style="font-size: 13px;"></ul>
 
-    <p style="font-size: 12px; margin-bottom: 4px;">
-      Paste this site's privacy policy text below, then click Check:
+    <p id="policy-status" style="font-size: 12px; word-wrap: break-word;">
+      Checking for a privacy policy...
     </p>
-    <textarea id="policy-input" placeholder="Paste privacy policy text here..."></textarea>
-    <button id="check-button">Check for Consent Gap</button>
+
+    <div id="manual-section" style="display: none;">
+      <p style="font-size: 12px; margin-bottom: 4px;">
+        Paste this site's privacy policy text below, then click Check:
+      </p>
+      <textarea id="policy-input" placeholder="Paste privacy policy text here..."></textarea>
+      <button id="check-button">Check for Consent Gap</button>
+    </div>
+
     <div id="result"></div>
 
     <script src="policy-phrases.js"></script>

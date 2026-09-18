@@ -1,15 +1,16 @@
 // popup.js
 // Runs when you click the extension icon.
 // Part 1: shows trackers background.js already caught on this tab.
-// Part 2: lets you paste in the site's privacy policy text and checks
-//         it for "we don't share your data" style phrases. If the site
-//         claims that AND trackers were caught -> that's the mismatch.
+// Part 2: checks for an AUTO-DETECTED privacy policy (found by content.js
+//         and fetched by background.js). If found, runs the check
+//         automatically. If not found, falls back to the manual paste box.
 
 let caughtTrackers = [];
 
 chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
   const currentTabId = tabs[0].id;
 
+  // --- Load trackers caught on this tab ---
   chrome.storage.local.get("trackersByTab", (data) => {
     const trackersByTab = data.trackersByTab || {};
     caughtTrackers = trackersByTab[currentTabId] || [];
@@ -25,21 +26,41 @@ chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         return "<li>" + t + "</li>";
       }).join("");
     }
+
+    // --- Load any auto-fetched privacy policy for this tab ---
+    chrome.storage.local.get("policyTextByTab", (policyData) => {
+      const policyTextByTab = policyData.policyTextByTab || {};
+      const policyEntry = policyTextByTab[currentTabId];
+      const statusEl = document.getElementById("policy-status");
+      const manualBox = document.getElementById("manual-section");
+
+      if (policyEntry && policyEntry.text) {
+        // Found a policy automatically - run the check right away
+        statusEl.textContent = "Privacy policy auto-detected: " + policyEntry.url;
+        statusEl.className = "neutral";
+        manualBox.style.display = "none"; // hide manual paste box, not needed
+
+        runCheck(policyEntry.text.toLowerCase());
+      } else {
+        // Nothing auto-detected - show the manual paste box instead
+        statusEl.textContent = "No privacy policy auto-detected on this page. Paste it manually below:";
+        statusEl.className = "neutral";
+        manualBox.style.display = "block";
+      }
+    });
   });
 });
 
-// --- Part 2: the Consent Gap check ---
-document.getElementById("check-button").addEventListener("click", function() {
-  const policyText = document.getElementById("policy-input").value.toLowerCase();
+// --- The actual Consent Gap check, shared by both auto and manual paths ---
+function runCheck(policyText) {
   const resultEl = document.getElementById("result");
 
-  if (!policyText.trim()) {
-    resultEl.textContent = "Paste some policy text first.";
+  if (!policyText || !policyText.trim()) {
+    resultEl.textContent = "No policy text to check.";
     resultEl.className = "neutral";
     return;
   }
 
-  // Does the pasted policy contain a "we don't share/sell" style phrase?
   const claimsNoSharing = NO_SHARING_PHRASES.some(function(phrase) {
     return policyText.includes(phrase);
   });
@@ -58,12 +79,18 @@ document.getElementById("check-button").addEventListener("click", function() {
   } else if (!claimsNoSharing && caughtTrackers.length > 0) {
     resultEl.className = "neutral";
     resultEl.textContent =
-      caughtTrackers.length + " tracker(s) were caught, but the pasted policy " +
-      "doesn't clearly claim \"no data sharing\" - so this isn't a contradiction, " +
-      "just tracking without a specific promise against it.";
+      caughtTrackers.length + " tracker(s) were caught, but the policy doesn't " +
+      "clearly claim \"no data sharing\" - so this isn't a contradiction, just " +
+      "tracking without a specific promise against it.";
   } else {
     resultEl.className = "neutral";
     resultEl.textContent =
       "No mismatch found - no trackers caught and no relevant claim in the policy.";
   }
+}
+
+// --- Manual paste button, used only when nothing was auto-detected ---
+document.getElementById("check-button").addEventListener("click", function() {
+  const policyText = document.getElementById("policy-input").value.toLowerCase();
+  runCheck(policyText);
 });
