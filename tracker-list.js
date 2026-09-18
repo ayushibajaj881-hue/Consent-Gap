@@ -1,33 +1,20 @@
-// tracker-list.js
-// This is Person 3's file — a bigger list of known ad/tracker/analytics
-// domains, kept separate so it's easy to update without touching the
-// core watching logic in background.js.
-//
-// This list is still not "complete" (a full EasyPrivacy list has
-// thousands of entries), but it covers the trackers you're most likely
-// to actually see during your demo — analytics, ad networks, and social
-// tracking pixels.
-//
-// To go further later: search "EasyPrivacy list json" or
-// "disconnect.me tracking protection lists" for full public blocklists,
-// and merge their domains into this array.
+// A small beginner-friendly list of well-known tracking/analytics domains.
+// This is NOT a complete blocklist. ConsentGap also looks for third-party
+// requests, so the demo does not depend only on this list.
 
-const KNOWN_TRACKERS = [
+const KNOWN_TRACKER_DOMAINS = [
   // Google
   "google-analytics.com",
   "googletagmanager.com",
-  "googletagservices.com",
   "googlesyndication.com",
   "doubleclick.net",
-  "adservice.google.com",
-  "google.com/pagead",
+  "googletagservices.com",
 
-  // Meta / Facebook
-  "facebook.com",
+  // Meta
   "facebook.net",
-  "connect.facebook.net",
+  "facebook.com",
 
-  // Analytics / heatmaps
+  // Analytics / product analytics
   "hotjar.com",
   "mixpanel.com",
   "segment.io",
@@ -35,10 +22,8 @@ const KNOWN_TRACKERS = [
   "amplitude.com",
   "clarity.ms",
   "chartbeat.com",
-  "newrelic.com",
-  "nr-data.net",
 
-  // Ad networks / programmatic
+  // Advertising
   "adnxs.com",
   "criteo.com",
   "taboola.com",
@@ -49,21 +34,10 @@ const KNOWN_TRACKERS = [
   "adform.net",
   "moatads.com",
   "adsrvr.org",
-  "bluekai.com",
-  "demdex.net",
-  "adsafeprotected.com",
-  "krxd.net",
   "scorecardresearch.com",
   "quantserve.com",
 
-  // Social tracking pixels
-  "linkedin.com/px",
-  "twitter.com/i/adsct",
-  "pinterest.com/ct",
-  "tiktok.com",
-  "snapchat.com",
-
-  // Attribution / mobile tracking
+  // Social / attribution
   "branch.io",
   "appsflyer.com",
   "adjust.com"

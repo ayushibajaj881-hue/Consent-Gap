@@ -1,0 +1,39 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>ConsentGap DemoShop</title>
+<style>
+body{font-family:Arial;max-width:650px;margin:60px auto;padding:20px}
+.card{border:1px solid #ddd;border-radius:12px;padding:24px}
+input{width:100%;padding:10px;margin:8px 0 14px;box-sizing:border-box}
+button{padding:12px 20px;border:0;border-radius:7px;background:#222;color:#fff}
+a{display:block;margin-top:20px}
+</style></head>
+<body>
+<div class="card">
+<h1>DemoShop</h1>
+<p>This page is intentionally created for the ConsentGap hackathon demo.</p>
+<label>Email</label>
+<input id="email" placeholder="you@example.com">
+<label>User ID</label>
+<input id="userId" placeholder="user-123">
+<button id="buy">Place Demo Order</button>
+<p id="status"></p>
+<a href="/privacy.html">Privacy Policy</a>
+</div>
+<script>
+document.getElementById("buy").addEventListener("click", async () => {
+  const email = document.getElementById("email").value;
+  const userId = document.getElementById("userId").value;
+  try {
+    await fetch("http://localhost:5501/collect", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({email: email, user_id: userId, product_id: "DEMO-001"})
+    });
+    document.getElementById("status").textContent = "Demo order sent.";
+  } catch(e) {
+    document.getElementById("status").textContent = "Request sent/blocked depending on your local server.";
+  }
+});
+</script>
+</body></html>

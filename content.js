@@ -1,31 +1,44 @@
 // content.js
-// This runs automatically on every page you visit (that's what a
-// "content script" means - it runs inside the actual webpage).
-// Its only job: look through the page's links, find one that looks
-// like a privacy policy, and tell background.js where it is.
+// Finds a privacy-policy link on the current page.
+// We intentionally keep this simple so the team can explain it easily.
 
 function findPrivacyPolicyLink() {
-  const links = document.querySelectorAll("a");
+  const links = Array.from(document.querySelectorAll("a"));
 
-  for (const link of links) {
-    const text = (link.textContent || "").toLowerCase();
+  // Prefer links whose visible text clearly says "privacy policy".
+  const exact = links.find((link) => {
+    const text = (link.textContent || "").trim().toLowerCase();
     const href = (link.getAttribute("href") || "").toLowerCase();
-
-    if (text.includes("privacy") || href.includes("privacy")) {
-      // link.href (not getAttribute) gives the full resolved URL,
-      // even if the site wrote it as a relative path like "/privacy"
-      return link.href;
-    }
-  }
-
-  return null;
-}
-
-const policyUrl = findPrivacyPolicyLink();
-
-if (policyUrl) {
-  chrome.runtime.sendMessage({
-    type: "PRIVACY_POLICY_FOUND",
-    url: policyUrl
+    return (
+      text.includes("privacy policy") ||
+      href.includes("privacy-policy") ||
+      href.includes("privacy_policy")
+    );
   });
+
+  if (exact && exact.href) return exact.href;
+
+  // Fallback: any privacy-related link.
+  const broad = links.find((link) => {
+    const text = (link.textContent || "").trim().toLowerCase();
+    const href = (link.getAttribute("href") || "").toLowerCase();
+    return text.includes("privacy") || href.includes("privacy");
+  });
+
+  return broad && broad.href ? broad.href : null;
 }
+
+function sendPolicyLink() {
+  const policyUrl = findPrivacyPolicyLink();
+
+  if (policyUrl) {
+    chrome.runtime.sendMessage({
+      type: "PRIVACY_POLICY_FOUND",
+      url: policyUrl
+    });
+  }
+}
+
+// Some websites build their footer after the first page load.
+sendPolicyLink();
+setTimeout(sendPolicyLink, 1500);

@@ -1,114 +1,276 @@
-// background.js
-// This runs quietly in the background the whole time Chrome is open.
-// Its job: watch every network request a website makes, check if it's
-// going to a known ad/tracker company, and save that info so popup.js
-// can show a score when you click the extension icon.
+// ConsentGap background service worker
+// ------------------------------------------------------------
+// Simple idea:
+// 1. Watch network requests.
+// 2. Identify third-party / known-tracker requests.
+// 3. Look at request data when Chrome makes it available.
+// 4. Store only DATA TYPES (email, phone, etc.), never the actual values.
+// 5. Compare those observations with the privacy policy.
+// ------------------------------------------------------------
 
-// --- STEP 1: Load the tracker list from Person 3's file ---
-// KNOWN_TRACKERS is defined in tracker-list.js, loaded in below.
-// importScripts only works in background scripts, not popup.js.
 importScripts("tracker-list.js");
 
-// --- STEP 2: Storage that resets per tab ---
-// We keep a running list of trackers caught for each tab (each open website).
-// Example shape: { 12: ["doubleclick.net", "hotjar.com"] }
-let trackersByTab = {};
+const MAX_EVENTS_PER_TAB = 100;
+let activityByTab = {};
+let policyByTab = {};
 
-// --- STEP 3: Helper — check if a URL's domain matches a known tracker ---
-function isTrackerDomain(url) {
+function safeUrl(value) {
   try {
-    const hostname = new URL(url).hostname;
-    return KNOWN_TRACKERS.some((tracker) => hostname.includes(tracker));
-  } catch (e) {
-    return false;
+    return new URL(value);
+  } catch (_) {
+    return null;
   }
 }
 
-// --- STEP 4: The actual "watching" ---
-// This fires every single time ANY request happens on ANY tab you're viewing.
+function getHost(url) {
+  const parsed = safeUrl(url);
+  return parsed ? parsed.hostname : "";
+}
+
+function getSiteOrigin(details) {
+  // initiator is normally the page origin that started the request.
+  // documentUrl is a useful fallback.
+  return details.initiator || details.documentUrl || "";
+}
+
+function isThirdParty(details) {
+  const site = safeUrl(getSiteOrigin(details));
+  const destination = safeUrl(details.url);
+
+  if (!site || !destination) return false;
+
+  return site.origin !== destination.origin;
+}
+
+function isKnownTracker(url) {
+  const parsed = safeUrl(url);
+  if (!parsed) return false;
+
+  const hostname = parsed.hostname.toLowerCase();
+  return KNOWN_TRACKER_DOMAINS.some((domain) =>
+    hostname === domain || hostname.endsWith("." + domain)
+  );
+}
+
+function addEvent(tabId, event) {
+  if (!activityByTab[tabId]) activityByTab[tabId] = [];
+
+  // Keep the popup small and fast.
+  activityByTab[tabId].unshift(event);
+  activityByTab[tabId] = activityByTab[tabId].slice(0, MAX_EVENTS_PER_TAB);
+
+  chrome.storage.local.set({ activityByTab });
+}
+
+function bytesToText(bytes) {
+  try {
+    return new TextDecoder("utf-8").decode(new Uint8Array(bytes));
+  } catch (_) {
+    return "";
+  }
+}
+
+// Turn a request body into harmless searchable text.
+// IMPORTANT: we do not save this text anywhere.
+function getRequestText(requestBody) {
+  if (!requestBody) return "";
+
+  const pieces = [];
+
+  if (requestBody.formData) {
+    for (const [key, values] of Object.entries(requestBody.formData)) {
+      pieces.push(key);
+      for (const value of values) pieces.push(String(value));
+    }
+  }
+
+  if (requestBody.raw) {
+    for (const item of requestBody.raw) {
+      if (item.bytes) pieces.push(bytesToText(item.bytes));
+    }
+  }
+
+  return pieces.join(" ").slice(0, 20000);
+}
+
+function detectDataTypes(details) {
+  const pieces = [details.url || ""];
+
+  // Request body is available only for some request types/content types.
+  pieces.push(getRequestText(details.requestBody));
+
+  const text = pieces.join(" ").toLowerCase();
+  const types = [];
+
+  // We detect the TYPE of data, not its actual value.
+  const rules = [
+    {
+      type: "Email",
+      patterns: [
+        /\bemail\b/,
+        /\be[-_ ]?mail\b/,
+        /email_address/,
+        /emailaddress/
+      ]
+    },
+    {
+      type: "Phone number",
+      patterns: [
+        /\bphone\b/,
+        /\bmobile\b/,
+        /\btelephone\b/,
+        /\bphone_number\b/
+      ]
+    },
+    {
+      type: "Location",
+      patterns: [
+        /\blatitude\b/,
+        /\blongitude\b/,
+        /\bgeolocation\b/,
+        /\blocation\b/,
+        /\bgps\b/
+      ]
+    },
+    {
+      type: "User / device ID",
+      patterns: [
+        /\buser[_-]?id\b/,
+        /\bdevice[_-]?id\b/,
+        /\bclient[_-]?id\b/,
+        /\badvertising[_-]?id\b/,
+        /\bvisitor[_-]?id\b/
+      ]
+    },
+    {
+      type: "Name",
+      patterns: [
+        /\bfirst[_-]?name\b/,
+        /\blast[_-]?name\b/,
+        /\bfull[_-]?name\b/,
+        /\busername\b/
+      ]
+    },
+    {
+      type: "Search / product activity",
+      patterns: [
+        /\bsearch[_-]?query\b/,
+        /\bquery\b/,
+        /\bproduct[_-]?id\b/,
+        /\bproduct\b/,
+        /\bsku\b/,
+        /\bcart\b/
+      ]
+    }
+  ];
+
+  for (const rule of rules) {
+    if (rule.patterns.some((pattern) => pattern.test(text))) {
+      types.push(rule.type);
+    }
+  }
+
+  return types;
+}
+
+function getCategory(details, knownTracker) {
+  if (knownTracker) return "Known tracker";
+  if (isThirdParty(details)) return "Third-party";
+  return "First-party";
+}
+
+function clearTab(tabId) {
+  delete activityByTab[tabId];
+  delete policyByTab[tabId];
+
+  chrome.storage.local.set({
+    activityByTab,
+    policyByTab
+  });
+}
+
+// Observe requests. "requestBody" lets Chrome provide POST/form data
+// when it is available. We only keep detected categories.
 chrome.webRequest.onBeforeRequest.addListener(
   (details) => {
-    const tabId = details.tabId;
-    if (tabId < 0) return; // ignore requests not tied to a real tab
+    if (details.tabId < 0) return;
 
-    if (isTrackerDomain(details.url)) {
-      const hostname = new URL(details.url).hostname;
+    const knownTracker = isKnownTracker(details.url);
+    const thirdParty = isThirdParty(details);
+    const dataTypes = detectDataTypes(details);
 
-      if (!trackersByTab[tabId]) {
-        trackersByTab[tabId] = [];
-      }
+    // We show requests when they are interesting:
+    // a known tracker, a third party, or a request carrying recognizable data.
+    if (!knownTracker && !thirdParty && dataTypes.length === 0) return;
 
-      // avoid duplicate entries for the same tracker
-      if (!trackersByTab[tabId].includes(hostname)) {
-        trackersByTab[tabId].push(hostname);
+    const destination = getHost(details.url);
 
-        // Save to chrome.storage so popup.js can read it when opened
-        chrome.storage.local.set({ trackersByTab });
+    addEvent(details.tabId, {
+      time: new Date().toISOString(),
+      destination,
+      category: getCategory(details, knownTracker),
+      method: details.method || "GET",
+      dataTypes,
+      knownTracker,
+      thirdParty,
+      hasData: dataTypes.length > 0
+    });
 
-        console.log(`[ConsentGap] Tracker caught on tab ${tabId}: ${hostname}`);
-      }
-    }
+    console.log("[ConsentGap]", {
+      destination,
+      category: getCategory(details, knownTracker),
+      dataTypes
+    });
   },
-  { urls: ["<all_urls>"] }
+  { urls: ["<all_urls>"] },
+  ["requestBody"]
 );
 
-// --- STEP 5: Reset the list when a tab navigates to a new page ---
-// Otherwise trackers from the last website would carry over.
+// Reset data when the main page changes.
 chrome.webNavigation.onBeforeNavigate.addListener((details) => {
   if (details.frameId === 0) {
-    // frameId 0 means the main page, not an iframe inside it
-    trackersByTab[details.tabId] = [];
-    chrome.storage.local.set({ trackersByTab });
-
-    // Also clear any previously fetched privacy policy for this tab
-    chrome.storage.local.get("policyTextByTab", (data) => {
-      const policyTextByTab = data.policyTextByTab || {};
-      delete policyTextByTab[details.tabId];
-      chrome.storage.local.set({ policyTextByTab });
-    });
+    clearTab(details.tabId);
   }
 });
 
-// --- STEP 6: Auto-detected privacy policy handling ---
-// content.js runs on every page and, if it finds a link that looks like
-// a privacy policy, sends its URL here. We fetch that page ourselves
-// (the extension's host_permissions let us fetch cross-origin, which a
-// normal webpage script can't always do) and strip it down to plain text.
+chrome.tabs.onRemoved.addListener((tabId) => {
+  delete activityByTab[tabId];
+  delete policyByTab[tabId];
+  chrome.storage.local.set({ activityByTab, policyByTab });
+});
+
+// Receive a privacy-policy URL from content.js and fetch its text.
 chrome.runtime.onMessage.addListener((message, sender) => {
-  if (message.type === "PRIVACY_POLICY_FOUND" && sender.tab) {
-    const tabId = sender.tab.id;
+  if (message.type !== "PRIVACY_POLICY_FOUND" || !sender.tab) return;
 
-    fetch(message.url)
-      .then((response) => response.text())
-      .then((html) => {
-        // Very simple HTML-to-text: strip scripts/styles, then all tags,
-        // then collapse extra whitespace. Not perfect, but good enough
-        // for keyword matching.
-        const plainText = html
-          .replace(/<script[\s\S]*?<\/script>/gi, " ")
-          .replace(/<style[\s\S]*?<\/style>/gi, " ")
-          .replace(/<[^>]+>/g, " ")
-          .replace(/\s+/g, " ")
-          .trim();
+  const tabId = sender.tab.id;
+  const url = message.url;
 
-        chrome.storage.local.get("policyTextByTab", (data) => {
-          const policyTextByTab = data.policyTextByTab || {};
-          policyTextByTab[tabId] = {
-            url: message.url,
-            text: plainText
-          };
-          chrome.storage.local.set({ policyTextByTab });
-        });
-      })
-      .catch((err) => {
-        console.log("[ConsentGap] Could not fetch privacy policy:", err);
-      });
-  }
+  fetch(url)
+    .then((response) => {
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      return response.text();
+    })
+    .then((html) => {
+      // Beginner-friendly HTML-to-text conversion.
+      const plainText = html
+        .replace(/<script[\s\S]*?<\/script>/gi, " ")
+        .replace(/<style[\s\S]*?<\/style>/gi, " ")
+        .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/&nbsp;/gi, " ")
+        .replace(/&amp;/gi, "&")
+        .replace(/\s+/g, " ")
+        .trim();
+
+      policyByTab[tabId] = {
+        url,
+        text: plainText.slice(0, 500000)
+      };
+
+      chrome.storage.local.set({ policyByTab });
+    })
+    .catch((error) => {
+      console.log("[ConsentGap] Policy fetch failed:", error.message);
+    });
 });
-
-// NEXT STEPS FOR THE TEAM (not built yet):
-// 1. Person 3: keep expanding KNOWN_TRACKERS in tracker-list.js
-// 2. Combine tracker count + policy mismatch into a single 0-100 score
-// 3. Handle sites where no privacy policy link is found (popup.js already
-//    falls back to the manual paste box for these)
-

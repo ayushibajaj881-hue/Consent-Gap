@@ -1,122 +1,295 @@
 // popup.js
-// Runs when you click the extension icon.
-// 1. Shows trackers background.js already caught on this tab.
-// 2. Checks for an auto-detected privacy policy (found by content.js,
-//    fetched by background.js). Falls back to manual paste if not found.
-// 3. Combines both into a single 0-100 "Consent Gap Score".
+// This file turns raw observations into a simple explanation for the user.
 
-let caughtTrackers = [];
+let currentTabId = null;
+let currentEvents = [];
+let currentPolicy = null;
 
-chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-  const currentTabId = tabs[0].id;
+document.addEventListener("DOMContentLoaded", loadPage);
 
-  chrome.storage.local.get("trackersByTab", (data) => {
-    const trackersByTab = data.trackersByTab || {};
-    caughtTrackers = trackersByTab[currentTabId] || [];
+function loadPage() {
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    if (!tabs[0]) return;
 
-    const messageEl = document.getElementById("message");
-    const listEl = document.getElementById("tracker-list");
+    currentTabId = tabs[0].id;
 
-    messageEl.textContent = "Trackers caught (" + caughtTrackers.length + ")";
-    listEl.innerHTML = caughtTrackers.map(function(t) {
-      return "<li>" + t + "</li>";
-    }).join("");
+    chrome.storage.local.get(["activityByTab", "policyByTab"], (data) => {
+      const allActivity = data.activityByTab || {};
+      const allPolicies = data.policyByTab || {};
 
-    chrome.storage.local.get("policyTextByTab", (policyData) => {
-      const policyTextByTab = policyData.policyTextByTab || {};
-      const policyEntry = policyTextByTab[currentTabId];
-      const statusEl = document.getElementById("policy-status");
-      const manualBox = document.getElementById("manual-section");
+      currentEvents = allActivity[currentTabId] || [];
+      currentPolicy = allPolicies[currentTabId] || null;
 
-      if (policyEntry && policyEntry.text) {
-        statusEl.textContent = "Privacy policy auto-detected: " + policyEntry.url;
-        manualBox.style.display = "none";
-        runCheck(policyEntry.text.toLowerCase());
-      } else {
-        statusEl.textContent = "No privacy policy auto-detected on this page. Paste it manually below:";
-        manualBox.style.display = "block";
-        // Still show a score based on trackers alone while waiting for manual input
-        updateScore(false, caughtTrackers.length);
-      }
+      render();
     });
   });
-});
-
-// --- Score calculation ---
-// Base score comes from how many trackers were caught (capped at 60).
-// A confirmed mismatch (policy says "no sharing" but trackers exist)
-// adds a big flat 40-point penalty, since that's the "gotcha" that
-// matters most - a lie is worse than just having ads.
-function calculateScore(mismatchFound, trackerCount) {
-  const trackerScore = Math.min(trackerCount * 6, 60);
-  const mismatchScore = mismatchFound ? 40 : 0;
-  return Math.min(trackerScore + mismatchScore, 100);
 }
 
-function updateScore(mismatchFound, trackerCount) {
-  const score = calculateScore(mismatchFound, trackerCount);
+function unique(list) {
+  return [...new Set(list)];
+}
+
+function getObservedDataTypes() {
+  return unique(
+    currentEvents.flatMap((event) => event.dataTypes || [])
+  );
+}
+
+function getTrackerEvents() {
+  return currentEvents.filter((event) => event.knownTracker);
+}
+
+function getThirdPartyEvents() {
+  return currentEvents.filter((event) => event.thirdParty);
+}
+
+function hasPolicyClaim(id) {
+  return analyzePolicy(currentPolicy ? currentPolicy.text : "")
+    .some((claim) => claim.id === id);
+}
+
+// Core comparison:
+// We do NOT say "tracker = violation".
+// We ask whether a relevant data type was observed and whether the
+// policy contains a statement that conflicts with that observation.
+function calculateAssessment() {
+  const dataTypes = getObservedDataTypes();
+  const trackers = getTrackerEvents();
+  const thirdParty = getThirdPartyEvents();
+
+  const noSharingClaim = hasPolicyClaim("no_third_party_sharing");
+  const noSellingClaim = hasPolicyClaim("no_selling");
+
+  // A "policy mismatch" needs both a restrictive policy claim and
+  // a data-bearing third-party request.
+  const dataBearingThirdParty = thirdParty.filter(
+    (event) => event.hasData
+  );
+
+  let mismatch = false;
+  let mismatchReason = "";
+
+  if (noSharingClaim && dataBearingThirdParty.length > 0) {
+    mismatch = true;
+    mismatchReason =
+      "The policy contains a no-third-party-sharing statement, but a third-party request contained a recognizable data field.";
+  } else if (noSellingClaim && dataBearingThirdParty.length > 0) {
+    mismatch = true;
+    mismatchReason =
+      "The policy contains a no-selling statement, but a data-bearing request to a third party was observed.";
+  }
+
+  // Score is intentionally simple and explainable.
+  let score = 0;
+
+  if (mismatch) score += 50;
+
+  // Data exposure: maximum 30.
+  const dataPoints = Math.min(dataTypes.length * 10, 30);
+  score += dataPoints;
+
+  // Third-party exposure: maximum 20.
+  const thirdPartyPoints = Math.min(thirdParty.length * 2, 20);
+  score += thirdPartyPoints;
+
+  score = Math.min(score, 100);
+
+  return {
+    score,
+    mismatch,
+    mismatchReason,
+    dataTypes,
+    trackers,
+    thirdParty,
+    dataBearingThirdParty
+  };
+}
+
+function render() {
+  const assessment = calculateAssessment();
+
+  renderScore(assessment);
+  renderResult(assessment);
+  renderStats(assessment);
+  renderDataTypes(assessment);
+  renderPolicy();
+  renderEvents();
+}
+
+function renderScore(assessment) {
   const circle = document.getElementById("score-circle");
   const label = document.getElementById("score-label");
 
-  circle.textContent = score;
+  circle.textContent = assessment.score;
+  circle.className = "";
 
-  circle.classList.remove("score-low", "score-medium", "score-high");
-  if (score >= 60) {
-    circle.classList.add("score-high");
+  if (assessment.score >= 60) {
+    circle.classList.add("high");
     label.textContent = "High Consent Gap";
-  } else if (score >= 30) {
-    circle.classList.add("score-medium");
+  } else if (assessment.score >= 30) {
+    circle.classList.add("medium");
     label.textContent = "Moderate Consent Gap";
   } else {
-    circle.classList.add("score-low");
+    circle.classList.add("low");
     label.textContent = "Low Consent Gap";
   }
 }
 
-// --- The Consent Gap check itself, shared by auto and manual paths ---
-function runCheck(policyText) {
-  const resultEl = document.getElementById("result");
+function renderResult(assessment) {
+  const result = document.getElementById("result");
 
-  if (!policyText || !policyText.trim()) {
-    resultEl.textContent = "No policy text to check.";
-    resultEl.className = "neutral";
-    updateScore(false, caughtTrackers.length);
+  if (assessment.mismatch) {
+    result.className = "result warning";
+    result.innerHTML =
+      "<b>⚠ Potential consent mismatch</b><br>" +
+      escapeHtml(assessment.mismatchReason);
     return;
   }
 
-  const claimsNoSharing = NO_SHARING_PHRASES.some(function(phrase) {
-    return policyText.includes(phrase);
-  });
-
-  const mismatchFound = claimsNoSharing && caughtTrackers.length > 0;
-  updateScore(mismatchFound, caughtTrackers.length);
-
-  if (mismatchFound) {
-    resultEl.className = "warning";
-    resultEl.textContent =
-      "Consent Gap detected: this policy claims it doesn't share your data, " +
-      "but " + caughtTrackers.length + " tracker(s) were caught sending requests " +
-      "in the background (" + caughtTrackers.slice(0, 3).join(", ") + ").";
-  } else if (claimsNoSharing && caughtTrackers.length === 0) {
-    resultEl.className = "safe";
-    resultEl.textContent =
-      "No mismatch found. The policy claims no data sharing, and no known " +
-      "trackers were caught on this page.";
-  } else if (!claimsNoSharing && caughtTrackers.length > 0) {
-    resultEl.className = "neutral";
-    resultEl.textContent =
-      caughtTrackers.length + " tracker(s) were caught, but the policy doesn't " +
-      "clearly claim \"no data sharing\" - so this isn't a contradiction, just " +
-      "tracking without a specific promise against it.";
-  } else {
-    resultEl.className = "neutral";
-    resultEl.textContent =
-      "No mismatch found - no trackers caught and no relevant claim in the policy.";
+  if (assessment.thirdParty.length > 0) {
+    result.className = "result neutral";
+    result.innerHTML =
+      "<b>Tracking observed</b><br>" +
+      assessment.thirdParty.length +
+      " third-party request(s) were observed. A tracker by itself is not treated as a policy contradiction.";
+    return;
   }
+
+  result.className = "result safe";
+  result.innerHTML =
+    "<b>No mismatch detected</b><br>" +
+    "No evidence currently shows a conflict between the policy claims we found and the observed requests.";
 }
 
-// --- Manual paste button, used only when nothing was auto-detected ---
-document.getElementById("check-button").addEventListener("click", function() {
-  const policyText = document.getElementById("policy-input").value.toLowerCase();
-  runCheck(policyText);
+function renderStats(assessment) {
+  document.getElementById("tracker-count").textContent =
+    assessment.trackers.length;
+
+  document.getElementById("third-party-count").textContent =
+    assessment.thirdParty.length;
+
+  document.getElementById("data-count").textContent =
+    currentEvents.filter((event) => event.hasData).length;
+}
+
+function renderDataTypes(assessment) {
+  const el = document.getElementById("data-types");
+
+  if (assessment.dataTypes.length === 0) {
+    el.textContent = "None detected yet.";
+    return;
+  }
+
+  el.innerHTML = assessment.dataTypes
+    .map((type) => `<span class="pill">${escapeHtml(type)}</span>`)
+    .join("");
+}
+
+function renderPolicy() {
+  const status = document.getElementById("policy-status");
+  const claimsEl = document.getElementById("policy-claims");
+  const manual = document.getElementById("manual-section");
+
+  if (!currentPolicy) {
+    status.textContent =
+      "No privacy policy was detected automatically.";
+    manual.style.display = "block";
+    claimsEl.textContent = "";
+    return;
+  }
+
+  status.innerHTML =
+    "Policy detected: <b>" +
+    escapeHtml(currentPolicy.url) +
+    "</b>";
+
+  const claims = analyzePolicy(currentPolicy.text);
+
+  if (claims.length === 0) {
+    claimsEl.textContent =
+      "No supported policy claim was found. This does not mean the site has no privacy disclosures.";
+  } else {
+    claimsEl.innerHTML =
+      "<b>Claims found:</b><ul>" +
+      claims.map((claim) =>
+        `<li>${escapeHtml(claim.label)}</li>`
+      ).join("") +
+      "</ul>";
+  }
+
+  manual.style.display = "none";
+}
+
+function renderEvents() {
+  const el = document.getElementById("events");
+
+  if (currentEvents.length === 0) {
+    el.innerHTML =
+      '<div class="small" style="margin-top:7px;">No interesting requests observed yet. Interact with the page and reopen the popup.</div>';
+    return;
+  }
+
+  el.innerHTML = currentEvents
+    .slice(0, 30)
+    .map((event) => {
+      const data =
+        event.dataTypes && event.dataTypes.length
+          ? event.dataTypes.join(", ")
+          : "No recognizable data field";
+
+      const badges = [
+        event.knownTracker ? "Known tracker" : "",
+        event.thirdParty ? "Third-party" : "",
+        event.method || "GET"
+      ].filter(Boolean);
+
+      return `
+        <div class="event">
+          <strong>${escapeHtml(event.destination)}</strong><br>
+          ${badges.map((b) => `<span class="pill">${escapeHtml(b)}</span>`).join("")}
+          <br>
+          Data: ${escapeHtml(data)}
+        </div>
+      `;
+    })
+    .join("");
+}
+
+document.getElementById("check-button").addEventListener("click", () => {
+  const text = document.getElementById("policy-input").value.trim();
+
+  if (!text) return;
+
+  currentPolicy = {
+    url: "Manual input",
+    text
+  };
+
+  render();
 });
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+// Refresh while the popup is open so new requests can appear live.
+setInterval(() => {
+  if (!currentTabId) return;
+
+  chrome.storage.local.get(["activityByTab", "policyByTab"], (data) => {
+    const allActivity = data.activityByTab || {};
+    const allPolicies = data.policyByTab || {};
+
+    currentEvents = allActivity[currentTabId] || [];
+    if (!currentPolicy && allPolicies[currentTabId]) {
+      currentPolicy = allPolicies[currentTabId];
+    }
+
+    render();
+  });
+}, 1000);
