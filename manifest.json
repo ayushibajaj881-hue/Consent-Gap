@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "ConsentGap",
+  "version": "0.1",
+  "description": "Catches the gap between what a site promises and what it actually sends to trackers.",
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "permissions": [
+    "activeTab"
+  ]
+}
