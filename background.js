@@ -4,22 +4,10 @@
 // going to a known ad/tracker company, and save that info so popup.js
 // can show a score when you click the extension icon.
 
-// --- STEP 1: A small starter list of known tracker domains ---
-// This is NOT complete — it's just enough to prove the concept works.
-// Later, replace this with a real list (search "easylist tracker domains json"
-// for a ready-made one with thousands of entries).
-const KNOWN_TRACKERS = [
-  "google-analytics.com",
-  "doubleclick.net",
-  "facebook.net",
-  "facebook.com",
-  "connect.facebook.net",
-  "adservice.google.com",
-  "googlesyndication.com",
-  "hotjar.com",
-  "segment.io",
-  "mixpanel.com"
-];
+// --- STEP 1: Load the tracker list from Person 3's file ---
+// KNOWN_TRACKERS is defined in tracker-list.js, loaded in below.
+// importScripts only works in background scripts, not popup.js.
+importScripts("tracker-list.js");
 
 // --- STEP 2: Storage that resets per tab ---
 // We keep a running list of trackers caught for each tab (each open website).
