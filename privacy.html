@@ -1,30 +1,41 @@
 <!doctype html>
 <html>
-<head><meta charset="utf-8"><title>DemoShop Privacy Policy</title></head>
+<head>
+<meta charset="utf-8">
+<title>DemoShop Privacy Policy</title>
+</head>
 <body style="font-family:Arial;max-width:700px;margin:50px auto;padding:20px">
 <h1>DemoShop Privacy Policy</h1>
-<div id="policy"></div>
+
 <p>This policy exists only for the ConsentGap hackathon demonstration.</p>
+
+<div id="policy-none">
+  <h2>No-Mismatch Policy</h2>
+  <p>DemoShop collects an email address and a user identifier to process demo orders.</p>
+  <p><strong>We do not share your personal information with third parties.</strong></p>
+</div>
+
+<div id="policy-tracking" style="display:none">
+  <h2>Tracking-Only Policy</h2>
+  <p>DemoShop collects an email address and a user identifier to process demo orders.</p>
+  <p>DemoShop may use third-party analytics services to understand page visits and improve the demo experience.</p>
+</div>
+
+<div id="policy-mismatch" style="display:none">
+  <h2>Controlled-Mismatch Policy</h2>
+  <p>DemoShop collects an email address and a user identifier to process demo orders.</p>
+  <p><strong>We do not share your personal information with third parties.</strong></p>
+</div>
+
 <script>
 const scenario = new URLSearchParams(window.location.search).get("scenario") || "none";
-const policy = document.getElementById("policy");
-
-if (scenario === "tracking") {
-  policy.innerHTML = `
-    <p>DemoShop collects an email address and a user identifier to process demo orders.</p>
-    <p>DemoShop may use third-party analytics services to understand page visits and improve the demo experience.</p>
-  `;
-} else if (scenario === "mismatch") {
-  policy.innerHTML = `
-    <p>DemoShop collects an email address and a user identifier to process demo orders.</p>
-    <p><strong>We do not share your personal information with third parties.</strong></p>
-  `;
-} else {
-  policy.innerHTML = `
-    <p>DemoShop collects an email address and a user identifier to process demo orders.</p>
-    <p><strong>We do not share your personal information with third parties.</strong></p>
-  `;
-}
+const sections = {
+  none: document.getElementById("policy-none"),
+  tracking: document.getElementById("policy-tracking"),
+  mismatch: document.getElementById("policy-mismatch")
+};
+Object.values(sections).forEach(section => section.style.display = "none");
+(sections[scenario] || sections.none).style.display = "block";
 </script>
 </body>
 </html>
