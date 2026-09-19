@@ -55,13 +55,13 @@ Website
            +--> Recognizable Data Types
                      |
                      v
-              Compare Evidence
+               Compare Evidence
                      |
                      v
-             Consent Gap Score
+               Consent Gap Score
                      |
                      v
-             User Explanation
+               User Explanation
 ```
 
 ---
@@ -80,7 +80,7 @@ The policy contains a no-third-party-sharing statement and the test generates no
 
 **Observed result: 0 — Low Consent Gap**
 
-![DemoShop — no-mismatch scenario: no third-party request is generated and the score is 0.](screenshots/Screenshot%20%2851%29%281%29.png)
+![DemoShop — no-mismatch scenario](screenshots/demo-no-mismatch.png)
 
 ---
 
@@ -92,7 +92,7 @@ A third-party request is generated, but no recognizable personal-data field is i
 
 The extension explicitly explains that a tracker by itself is not treated as a policy contradiction.
 
-![DemoShop — tracking-only scenario: a third-party request is observed without recognizable data.](screenshots/Screenshot%20%2850%29%281%29.png)
+![DemoShop — tracking-only scenario](screenshots/demo-tracking-only.png)
 
 ---
 
@@ -114,7 +114,7 @@ ConsentGap detects:
 
 **Observed result: 82 — High Consent Gap**
 
-![DemoShop — controlled mismatch: ConsentGap detects a policy/activity conflict and shows a score of 82.](screenshots/Screenshot%20%2852%29%281%29.png)
+![DemoShop — controlled mismatch](screenshots/demo-controlled-mismatch.png)
 
 The score is an **indicator**, not a legal judgement or proof of wrongdoing.
 
@@ -126,13 +126,13 @@ We also tested ConsentGap on real websites to demonstrate that the extension can
 
 ## Nykaa
 
-![ConsentGap running on Nykaa with observed tracker activity and an automatically detected privacy policy.](screenshots/Screenshot%20%2829%29%281%29.png)
+![ConsentGap running on Nykaa](screenshots/nykaa.png)
 
 The extension observed third-party activity and automatically detected an available privacy-policy URL.
 
 ## The Hindu
 
-![ConsentGap running on The Hindu with observed tracker activity and an automatically detected privacy policy.](screenshots/Screenshot%20%2828%29%281%29.png)
+![ConsentGap running on The Hindu](screenshots/the-hindu.png)
 
 The extension observed third-party activity and detected the site's available privacy-policy URL.
 
@@ -156,7 +156,7 @@ For example:
 "We do not share your personal information with third parties"
                 |
                 v
-       no_third_party_sharing
+        no_third_party_sharing
 ```
 
 ### 3. Network Observation
@@ -308,38 +308,6 @@ This makes it possible to demonstrate that third-party activity alone is not tre
 
 ---
 
-# Presentation Explanation
-
-### 30-second explanation
-
-> “ConsentGap is a Chrome extension that checks the difference between a website's privacy promises and its observable browser activity. We monitor relevant requests, identify third-party and known tracker activity, and look for recognizable data types such as email and user IDs. We then compare these observations with simple claims extracted from the privacy policy. Instead of calling every tracker a violation, we flag a potential mismatch when the observable evidence conflicts with a specific policy claim.”
-
-### If asked: “How do you detect trackers?”
-
-> “We maintain a starter list of known tracker domains and also compare the page's origin with the destination origin to identify third-party requests.”
-
-### “How do you know what data is being sent?”
-
-> “For requests where the browser exposes request information, we search for recognizable field names and patterns such as email and user_id. We store the category, not the actual value.”
-
-### “How do you read the privacy policy?”
-
-> “We find the privacy-policy link on the page, fetch its text through the extension, and use explainable keyword rules to identify claims such as no third-party sharing.”
-
-### “Why not use AI?”
-
-> “For our first prototype, we chose deterministic rules because they are fast, transparent and easy to explain. AI or NLP can be added later to understand more complicated policy language.”
-
-### “Does a tracker mean the company is doing something wrong?”
-
-> “No. A tracker alone does not prove a policy violation. Our extension distinguishes tracking activity from a potential policy mismatch.”
-
-### “What is innovative?”
-
-> “Traditional privacy tools mostly focus on blocking trackers. ConsentGap focuses on the relationship between what a website's privacy policy claims and what we can observe in browser activity.”
-
----
-
 # Limitations
 
 This is a prototype. It cannot:
@@ -384,25 +352,3 @@ These limitations are important because browser-level observation is not the sam
 
 **GitHub:**  
 https://github.com/ayushibajaj881-hue/Consent-Gap
-
----
-
-## Screenshot files required by this README
-
-Create a folder named:
-
-```text
-screenshots
-```
-
-inside the GitHub repository and upload these five screenshot files into it:
-
-```text
-Screenshot (51)(1).png
-Screenshot (50)(1).png
-Screenshot (52)(1).png
-Screenshot (29)(1).png
-Screenshot (28)(1).png
-```
-
-The README already references these exact filenames.
