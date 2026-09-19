@@ -1,7 +1,7 @@
 # Run this in a second terminal:
 # python tracker-server.py
 #
-# It accepts the demo request at http://localhost:5501/collect.
+# It accepts the demo requests at http://localhost:5501/track and /collect.
 # The server does not save the posted values.
 
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -17,7 +17,14 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         length = int(self.headers.get("Content-Length", "0"))
         _ = self.rfile.read(length)  # read, but do not store
-        print("ConsentGap demo tracker received a request")
+
+        if self.path == "/track":
+            print("ConsentGap demo tracker received a tracking-only request")
+        elif self.path == "/collect":
+            print("ConsentGap demo tracker received a data-bearing request")
+        else:
+            print("ConsentGap demo tracker received a request")
+
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()

@@ -1,27 +1,100 @@
 <!doctype html>
 <html>
-<head><meta charset="utf-8"><title>ConsentGap DemoShop</title>
+<head>
+<meta charset="utf-8">
+<title>ConsentGap DemoShop</title>
 <style>
-body{font-family:Arial;max-width:650px;margin:60px auto;padding:20px}
-.card{border:1px solid #ddd;border-radius:12px;padding:24px}
+body{font-family:Arial;max-width:720px;margin:40px auto;padding:20px;background:#f7f8fa;color:#202124}
+.card{background:#fff;border:1px solid #ddd;border-radius:12px;padding:24px;margin-bottom:16px}
 input{width:100%;padding:10px;margin:8px 0 14px;box-sizing:border-box}
-button{padding:12px 20px;border:0;border-radius:7px;background:#222;color:#fff}
-a{display:block;margin-top:20px}
-</style></head>
+button{padding:11px 16px;border:0;border-radius:7px;background:#222;color:#fff;cursor:pointer;margin:4px 4px 4px 0}
+button.secondary{background:#eee;color:#222}
+.scenario{border:1px solid #ddd;border-radius:9px;padding:12px;margin-top:10px}
+.scenario strong{display:block;margin-bottom:5px}
+.status{margin-top:12px;padding:10px;border-radius:8px;background:#f1f3f4}
+a{display:block;margin-top:20px;color:#175cd3}
+.small{font-size:13px;color:#666;line-height:1.4}
+</style>
+</head>
 <body>
 <div class="card">
-<h1>DemoShop</h1>
-<p>This page is intentionally created for the ConsentGap hackathon demo.</p>
+<h1>ConsentGap DemoShop</h1>
+<p>This controlled website is intentionally created for the ConsentGap hackathon demonstration.</p>
+<p class="small"><b>Choose a scenario below, then open the ConsentGap extension.</b> Reloading the scenario clears the previous browser activity for a clean test.</p>
+
+<div class="scenario">
+<strong>Scenario 1 — No mismatch</strong>
+<div class="small">Policy: no third-party sharing. Activity: no third-party data request.</div>
+<button onclick="setScenario('none')">Run No-Mismatch Test</button>
+</div>
+
+<div class="scenario">
+<strong>Scenario 2 — Tracking only</strong>
+<div class="small">Policy does not make a no-sharing claim. A third-party request is made without a recognizable personal-data field.</div>
+<button onclick="setScenario('tracking')">Run Tracking-Only Test</button>
+</div>
+
+<div class="scenario">
+<strong>Scenario 3 — Controlled mismatch</strong>
+<div class="small">Policy says no third-party sharing. The third-party request contains recognizable data fields.</div>
+<button onclick="setScenario('mismatch')">Run Controlled-Mismatch Test</button>
+</div>
+
+<div id="mismatch-form" style="display:none;margin-top:18px">
 <label>Email</label>
 <input id="email" placeholder="you@example.com">
 <label>User ID</label>
 <input id="userId" placeholder="user-123">
-<button id="buy">Place Demo Order</button>
-<p id="status"></p>
-<a href="/privacy.html">Privacy Policy</a>
+<button onclick="placeDemoOrder()">Place Demo Order</button>
 </div>
+
+<p id="status" class="status"></p>
+<a id="policy-link" href="/privacy.html">Privacy Policy</a>
+</div>
+
 <script>
-document.getElementById("buy").addEventListener("click", async () => {
+const params = new URLSearchParams(window.location.search);
+const scenario = params.get("scenario") || "none";
+
+function setScenario(next) {
+  window.location.href = "?scenario=" + encodeURIComponent(next);
+}
+
+function updateUI() {
+  const status = document.getElementById("status");
+  const form = document.getElementById("mismatch-form");
+  const policyLink = document.getElementById("policy-link");
+
+  policyLink.href = "/privacy.html?scenario=" + encodeURIComponent(scenario);
+
+  if (scenario === "tracking") {
+    status.textContent = "Tracking-only scenario ready. Click the test button below to generate third-party activity.";
+    const button = document.createElement("button");
+    button.textContent = "Send Tracking Event";
+    button.onclick = sendTrackingEvent;
+    status.after(button);
+  } else if (scenario === "mismatch") {
+    form.style.display = "block";
+    status.textContent = "Controlled-mismatch scenario ready. Enter demo values and place the demo order.";
+  } else {
+    status.textContent = "No-mismatch scenario ready. No third-party request will be generated.";
+  }
+}
+
+async function sendTrackingEvent() {
+  try {
+    await fetch("http://localhost:5501/track", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({event: "page_view"})
+    });
+    document.getElementById("status").textContent = "Tracking event sent. Open ConsentGap to observe the third-party activity.";
+  } catch(e) {
+    document.getElementById("status").textContent = "Tracking request attempted. Open ConsentGap to inspect the activity.";
+  }
+}
+
+async function placeDemoOrder() {
   const email = document.getElementById("email").value;
   const userId = document.getElementById("userId").value;
   try {
@@ -30,10 +103,13 @@ document.getElementById("buy").addEventListener("click", async () => {
       headers: {"Content-Type":"application/json"},
       body: JSON.stringify({email: email, user_id: userId, product_id: "DEMO-001"})
     });
-    document.getElementById("status").textContent = "Demo order sent.";
+    document.getElementById("status").textContent = "Demo order sent. Open ConsentGap to inspect the potential mismatch.";
   } catch(e) {
-    document.getElementById("status").textContent = "Request sent/blocked depending on your local server.";
+    document.getElementById("status").textContent = "Request attempted. Open ConsentGap to inspect the activity.";
   }
-});
+}
+
+updateUI();
 </script>
-</body></html>
+</body>
+</html>
